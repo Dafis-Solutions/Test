@@ -6,9 +6,7 @@
     <title>DAFIS SOLUTIONS - Facture</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
@@ -24,7 +22,6 @@
             .print-text-right { text-align: right !important; }
         }
         
-        /* تعديل حجم الورقة ليتناسب مع الهاتف */
         .a4-sheet {
             width: 100%;
             max-width: 210mm;
@@ -33,7 +30,6 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
         }
         
-        /* فقط على الشاشات الكبيرة تأخذ طول الـ A4 الثابت */
         @media (min-width: 768px) {
             .a4-sheet {
                 min-height: 297mm;
@@ -43,23 +39,41 @@
         input, textarea { background: transparent; outline: none; }
         textarea { resize: none; overflow: hidden; }
         
-        /* تحسين التمرير للجداول على الهاتف */
         .table-container {
             width: 100%;
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
         }
+
+        /* تنسيقات خاصة بحالة الفاتورة في السجل */
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+        .status-paid { background-color: #dcfce7; color: #166534; }
+        .status-unpaid { background-color: #fee2e2; color: #991b1b; }
     </style>
 </head>
 <body class="bg-gray-100 py-4 md:py-8 font-sans text-gray-900 flex flex-col items-center px-2 md:px-0" onload="initApp()">
 
     <div class="no-print bg-white p-3 md:p-4 rounded-xl shadow-sm mb-6 flex flex-col md:flex-row gap-4 items-center w-full max-w-4xl justify-between border border-gray-200 sticky top-2 md:top-4 z-40">
         <div class="flex flex-wrap gap-2 justify-center w-full md:w-auto">
+             <button onclick="saveCurrentInvoice()" class="flex-1 md:flex-none items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 md:py-2.5 rounded-lg font-medium transition-colors shadow-sm text-sm md:text-base">
+                <i class="fas fa-save"></i> حفظ
+            </button>
+            <button onclick="toggleHistory(true)" class="flex-1 md:flex-none items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 md:py-2.5 rounded-lg font-medium transition-colors shadow-sm text-sm md:text-base">
+                <i class="fas fa-history"></i> السجل
+            </button>
             <button onclick="toggleCatalog(true)" class="flex-1 md:flex-none items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 md:py-2.5 rounded-lg font-medium transition-colors shadow-sm text-sm md:text-base">
                 <i class="fas fa-database"></i> الكتالوج
             </button>
             <button onclick="addInvoiceItem()" class="flex-1 md:flex-none items-center justify-center gap-2 bg-gray-800 hover:bg-gray-900 text-white px-3 py-2 md:py-2.5 rounded-lg font-medium transition-colors shadow-sm text-sm md:text-base">
                 <i class="fas fa-plus"></i> سطر جديد
+            </button>
+            <button onclick="resetInvoiceForm()" class="flex-1 md:flex-none items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 md:py-2.5 rounded-lg font-medium transition-colors shadow-sm text-sm md:text-base" title="فاتورة جديدة">
+                <i class="fas fa-redo"></i> تفريغ
             </button>
         </div>
 
@@ -74,6 +88,48 @@
             <button onclick="window.print()" class="flex-1 md:flex-none items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3 py-2 md:py-2.5 rounded-lg font-medium transition-colors shadow-sm text-sm md:text-base hidden md:flex">
                 <i class="fas fa-print"></i> طباعة
             </button>
+        </div>
+    </div>
+
+    <div id="historyModal" class="fixed inset-0 z-50 bg-black/60 items-center justify-center p-2 md:p-4 backdrop-blur-sm hidden no-print flex">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-purple-800 text-white px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
+                <h2 class="text-lg md:text-xl font-bold flex items-center gap-2" dir="rtl">
+                    <i class="fas fa-history"></i> سجل الفواتير المحفوظة
+                </h2>
+                <button onclick="toggleHistory(false)" class="text-gray-300 hover:text-white text-xl p-1">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="p-3 md:p-6 overflow-y-auto flex-1 bg-gray-50" dir="rtl">
+                <div class="flex flex-wrap gap-4 mb-6">
+                    <div class="flex-1 bg-white p-4 rounded-lg shadow-sm border border-gray-200 text-center">
+                        <div class="text-sm text-gray-500 font-bold mb-1">إجمالي الفواتير</div>
+                        <div class="text-2xl font-black text-purple-600" id="statTotalInvoices">0</div>
+                    </div>
+                    <div class="flex-1 bg-white p-4 rounded-lg shadow-sm border border-gray-200 text-center">
+                        <div class="text-sm text-gray-500 font-bold mb-1">إجمالي التحصيل (المدفوع)</div>
+                        <div class="text-2xl font-black text-emerald-600" id="statTotalRevenue">0 DA</div>
+                    </div>
+                </div>
+
+                <div class="table-container bg-white border border-gray-200 rounded-lg shadow-sm" dir="ltr">
+                    <table class="w-full text-left text-xs md:text-sm min-w-[600px]">
+                        <thead class="bg-gray-100 border-b border-gray-200">
+                            <tr>
+                                <th class="py-2 px-3 font-semibold text-gray-600">N° Facture</th>
+                                <th class="py-2 px-3 font-semibold text-gray-600">Date</th>
+                                <th class="py-2 px-3 font-semibold text-gray-600">Client</th>
+                                <th class="py-2 px-3 font-semibold text-gray-600 text-right">Total TTC</th>
+                                <th class="py-2 px-3 font-semibold text-gray-600 text-center">Statut</th>
+                                <th class="py-2 px-3 font-semibold text-gray-600 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -97,6 +153,618 @@
                             <button id="btnSaveCatalog" onclick="saveOrUpdateCatalog()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors whitespace-nowrap">
                                 حفظ
                             </button>
+                            <button id="btnCancelEdit" onclick="cancelEdit()" class="hidden bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-2 rounded-md font-medium text-sm transition-colors whitespace-nowrap">
+                                إلغاء
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-container bg-white border border-gray-200 rounded-lg shadow-sm" dir="ltr">
+                    <table class="w-full text-left text-xs md:text-sm min-w-[400px]">
+                        <thead class="bg-gray-100 border-b border-gray-200 select-none">
+                            <tr>
+                                <th onclick="sortCatalog('name')" class="py-2 px-3 md:px-4 font-semibold text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors">
+                                    Désignation <i id="sortIconName" class="fas fa-sort ml-1 text-gray-400"></i>
+                                </th>
+                                <th onclick="sortCatalog('price')" class="py-2 px-3 md:px-4 font-semibold text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors">
+                                    Prix (DA) <i id="sortIconPrice" class="fas fa-sort ml-1 text-gray-400"></i>
+                                </th>
+                                <th class="py-2 px-3 md:px-4 font-semibold text-gray-600 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="catalogTableBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="a4-sheet relative overflow-hidden text-[12px] md:text-[13px]" id="invoice-container">
+        <div class="absolute inset-0 opacity-[0.03] pointer-events-none flex items-center justify-center">
+            <i class="fas fa-shield-alt text-[200px] md:text-[400px]"></i>
+        </div>
+
+        <div class="p-4 md:p-10 relative z-10 flex flex-col h-full">
+            
+            <div class="flex flex-col md:flex-row print-flex-row justify-between border-b-2 border-red-600 pb-4 md:pb-6 mb-4 md:mb-6 gap-4">
+                
+                <div class="flex flex-col justify-between items-center md:items-start print-items-start">
+                    <img src="logo.jpg" alt="DAFIS Solutions Logo" class="w-28 md:w-36 h-auto object-contain mb-3 md:mb-4" onerror="this.onerror=null; this.src='https://placehold.co/150x150/ffffff/e50000?text=DAFIS+LOGO';"/>
+                    
+                    <div class="text-gray-600 font-semibold text-[10px] md:text-xs flex flex-col gap-1.5 items-center md:items-start print-items-start">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-shield-alt text-red-600"></i> AGRÉE PAR L'ÉTAT
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-video text-red-600"></i> Solutions de Télésurveillance
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col justify-between items-center md:items-end print-items-end mt-2 md:mt-0">
+                    <div class="flex flex-col items-center md:items-end print-items-end mb-4 md:mb-0">
+                        <div class="flex flex-col md:flex-row print-flex-row items-center gap-2 md:gap-4 mb-2">
+                            <h1 class="text-2xl md:text-3xl font-black text-gray-800 uppercase tracking-wider m-0 text-center md:text-right print-text-right">Facture Proforma</h1>
+                            
+                            <div class="flex items-center gap-1 bg-gray-50 border border-gray-200 px-2 md:px-3 py-1 rounded-md">
+                                <span class="font-bold text-gray-600">N°:</span>
+                                <input type="text" id="invoiceNum" value="2026/001" class="text-center border-none bg-transparent focus:outline-none w-16 md:w-20 font-black text-red-600 text-base md:text-lg p-0">
+                            </div>
+                        </div>
+                        <div class="bg-red-600 h-1 w-12 md:w-16 rounded-full hidden md:block print:block"></div>
+                    </div>
+
+                    <div class="flex items-center gap-2 md:mt-auto">
+                        <span class="font-bold text-gray-600 text-xs md:text-sm">DATE :</span>
+                        <input type="text" id="invoiceDate" class="text-center md:text-right print-text-right border-b border-dashed border-gray-400 focus:border-red-500 w-24 md:w-32 font-bold text-gray-800 bg-transparent text-sm">
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-gray-50 p-3 md:p-4 rounded-lg border border-gray-200 mb-4 md:mb-6 flex flex-col md:flex-row print-flex-row items-start md:items-center gap-2 md:gap-0">
+                <span class="font-bold text-gray-700 w-full md:w-24">CLIENT :</span>
+                <input type="text" id="clientName" placeholder="Nom du client / Entreprise..." class="w-full md:flex-1 border-b border-dashed border-gray-300 focus:border-red-500 font-bold text-sm md:text-base text-gray-900 pb-1 bg-transparent">
+            </div>
+
+            <div class="flex-1 table-container pb-2">
+                <table class="w-full text-left border-collapse min-w-[500px]">
+                    <thead>
+                        <tr class="bg-gray-800 text-white">
+                            <th class="py-2 md:py-3 px-2 md:px-4 font-bold border border-gray-800 w-6/12 md:w-7/12">DÉSIGNATION</th>
+                            <th class="py-2 md:py-3 px-2 md:px-4 font-bold border border-gray-800 text-center w-1/12">QNT</th>
+                            <th class="py-2 md:py-3 px-2 md:px-4 font-bold border border-gray-800 text-center w-2/12">P.U (DA)</th>
+                            <th class="py-2 md:py-3 px-2 md:px-4 font-bold border border-gray-800 text-right w-3/12 md:w-2/12">MONTANT</th>
+                            <th class="no-print w-8 border border-gray-800"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="invoiceTableBody">
+                        </tbody>
+                </table>
+            </div>
+
+            <div class="flex flex-col-reverse md:flex-row print-flex-row mt-4 md:mt-6 gap-4 md:gap-6 items-start">
+                
+                <div class="w-full md:w-7/12 print-w-7-12 flex flex-col gap-3 md:gap-4">
+                    <div class="bg-gray-50 border border-gray-200 p-3 md:p-4 rounded-lg">
+                        <h3 class="font-bold text-gray-700 mb-2 border-b border-gray-200 pb-1 text-xs md:text-sm">Notes / Remarques :</h3>
+                        <textarea class="w-full text-gray-600 text-[11px] md:text-xs bg-transparent" rows="3">Consommation de cable COX : 100 DA par 1m&#10;Consommation de cable reseau : 180 DA par 1m</textarea>
+                    </div>
+
+                    <div class="border border-gray-200 p-3 md:p-4 rounded-lg">
+                        <h3 class="font-bold text-gray-700 mb-2 border-b border-gray-200 pb-1 text-xs md:text-sm">Coordonnées Bancaires :</h3>
+                        <div class="flex items-center mb-1">
+                            <span class="w-24 md:w-32 text-gray-500 font-semibold text-[10px] md:text-xs">Nom :</span>
+                            <input type="text" placeholder="Saisir le nom..." class="flex-1 border-b border-dashed border-gray-300 font-bold text-gray-800 text-[11px] md:text-xs bg-transparent">
+                        </div>
+                        <div class="flex items-center">
+                            <span class="w-24 md:w-32 text-gray-500 font-semibold text-[10px] md:text-xs">N° compte :</span>
+                            <input type="text" placeholder="Saisir RIB..." class="flex-1 border-b border-dashed border-gray-300 font-bold text-gray-800 text-[11px] md:text-xs tracking-wider bg-transparent">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="w-full md:w-5/12 print-w-5-12 border border-gray-200 rounded-lg overflow-hidden shrink-0">
+                    <table class="w-full text-xs md:text-[13px]">
+                        <tr class="border-b border-gray-200">
+                            <td class="p-2 md:p-3 font-bold text-gray-700 bg-gray-50 w-1/2">SOUS-TOTAL</td>
+                            <td class="p-2 md:p-3 font-bold text-right text-gray-900" id="valSousTotal">0 DA</td>
+                        </tr>
+                        <tr class="border-b border-gray-200" id="rowTva">
+                            <td class="p-2 md:p-3 font-bold text-gray-700 bg-gray-50">
+                                TVA <span id="lblTvaRate" class="bg-gray-200 text-gray-600 px-1 py-0.5 rounded text-[9px] md:text-[10px]">19%</span>
+                            </td>
+                            <td class="p-2 md:p-3 font-bold text-right text-gray-900" id="valTva">0 DA</td>
+                        </tr>
+                        <tr class="border-b border-gray-200">
+                            <td class="p-2 md:p-3 font-bold text-gray-700 bg-gray-50">VERSEMENT</td>
+                            <td class="p-2 md:p-3 text-right">
+                                <input type="number" id="versementInput" value="0" oninput="calculateTotals()" class="w-16 md:w-20 border-b border-dashed border-gray-400 text-right font-bold text-gray-900 pr-1 bg-transparent"> DA
+                            </td>
+                        </tr>
+                        <tr class="bg-gray-800 text-white">
+                            <td class="p-3 md:p-4 font-black text-sm md:text-base uppercase">TOTAL TTC</td>
+                            <td class="p-3 md:p-4 font-black text-right text-sm md:text-base text-red-400" id="valTotalTtc">0 DA</td>
+                        </tr>
+                        <tr class="bg-red-50" id="rowReste" style="display: none;">
+                            <td class="p-2 md:p-3 font-bold text-red-800 uppercase text-[11px] md:text-xs">Reste à payer</td>
+                            <td class="p-2 md:p-3 font-bold text-right text-red-800 text-xs md:text-sm" id="valReste">0 DA</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <div class="mt-8 md:mt-auto pt-4 md:pt-6 border-t-2 border-red-600 flex flex-col md:flex-row print-flex-row justify-between items-center bg-white gap-4 md:gap-0">
+                <div class="flex gap-3 md:gap-4 text-red-600 text-xl md:text-2xl">
+                    <i class="fas fa-video"></i>
+                    <i class="fas fa-headset"></i>
+                </div>
+                
+                <div class="flex flex-col items-center md:items-end print-items-end gap-1 text-[10px] md:text-xs font-semibold text-gray-700 text-center md:text-right">
+                    <div class="flex items-center justify-center md:justify-end gap-2 w-full">
+                        <span class="hidden md:inline">contact.dafisolutions@gmail.com</span>
+                        <span class="md:hidden">contact.dafisolutions@...</span>
+                        <i class="fas fa-envelope text-red-600"></i>
+                    </div>
+                    <div class="flex items-center justify-center md:justify-end gap-2 w-full">
+                        06 59 84 96 56 / 07 95 98 33 37 <i class="fas fa-phone text-red-600"></i>
+                    </div>
+                    <div class="flex items-center justify-center md:justify-end gap-2 w-full">
+                        <a href="https://dafis-solutions.github.io/HOME/" target="_blank" class="hover:text-blue-600 transition-colors hidden md:inline">https://dafis-solutions.github.io/HOME/</a>
+                        <a href="https://dafis-solutions.github.io/HOME/" target="_blank" class="hover:text-blue-600 transition-colors md:hidden">Site Web Officiel</a>
+                        <i class="fas fa-globe text-red-600"></i>
+                    </div>
+                    <div class="flex items-center justify-center md:justify-end gap-2 mt-1 w-full">
+                        Tébessa, 12004 - Algérie <i class="fas fa-map-marker-alt text-red-600"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let invoiceItems = [];
+        let catalogItems = [];
+        let savedInvoices = []; // مصفوفة لتخزين الفواتير السابقة
+        let editingCatId = null;
+        let currentSort = { column: null, asc: true };
+        let currentTotalTTC = 0; // متغير لحفظ الإجمالي النهائي للفاتورة الحالية
+
+        function initApp() {
+            const today = new Date().toLocaleDateString('fr-FR');
+            document.getElementById('invoiceDate').value = today;
+
+            // استرجاع الكتالوج
+            const savedCatalog = localStorage.getItem('dafis_catalog');
+            if (savedCatalog) {
+                catalogItems = JSON.parse(savedCatalog);
+            } else {
+                catalogItems = [
+                    { id: Date.now()+1, name: 'XVR Dahua 16chaine 5Mp 13', price: 42000 },
+                    { id: Date.now()+2, name: 'Camera Dahua 5Mp Int', price: 12500 },
+                    { id: Date.now()+3, name: 'Camera Dahua 5Mp Audio', price: 13500 },
+                    { id: Date.now()+4, name: 'Bloc alimentation 18 cnx', price: 8000 },
+                    { id: Date.now()+5, name: 'HDD 4000GB', price: 26000 },
+                    { id: Date.now()+6, name: 'Cable COX (100m)', price: 30000 },
+                    { id: Date.now()+7, name: 'Armoire', price: 10000 }
+                ];
+                saveCatalog();
+            }
+
+            // استرجاع الفواتير المحفوظة
+            const loadedInvoices = localStorage.getItem('dafis_history');
+            if(loadedInvoices) {
+                savedInvoices = JSON.parse(loadedInvoices);
+            }
+            
+            renderCatalog();
+            renderInvoiceTable();
+            autoIncrementInvoiceNum();
+        }
+
+        // --- وظائف الفاتورة الأساسية ---
+
+        function addInvoiceItem(name = '', qty = 1, price = 0) {
+            invoiceItems.push({ id: Date.now() + Math.random(), name, qty, price });
+            renderInvoiceTable();
+        }
+
+        function removeInvoiceItem(id) {
+            invoiceItems = invoiceItems.filter(item => item.id !== id);
+            renderInvoiceTable();
+        }
+
+        function updateItem(id, field, element) {
+            const item = invoiceItems.find(i => i.id === id);
+            if(item) {
+                if (field === 'name') {
+                    item.name = element.value;
+                    element.style.height = 'auto';
+                    element.style.height = element.scrollHeight + 'px';
+                } else {
+                    item[field] = parseFloat(element.value) || 0;
+                }
+                calculateTotals();
+                
+                if(field !== 'name') {
+                    const row = element.closest('tr');
+                    const totalCell = row.querySelector('.item-total');
+                    totalCell.innerText = (item.qty * item.price).toLocaleString('fr-FR');
+                }
+            }
+        }
+
+        function renderInvoiceTable() {
+            const tbody = document.getElementById('invoiceTableBody');
+            tbody.innerHTML = '';
+
+            if(invoiceItems.length === 0) {
+                tbody.innerHTML = `<tr class="no-print"><td colspan="5" class="text-center py-6 text-gray-400 italic border border-gray-200 text-xs md:text-sm">الفاتورة فارغة. أضف سلعاً من الكتالوج أو اضغط على سطر جديد.</td></tr>`;
+            } else {
+                invoiceItems.forEach((item, index) => {
+                    const bgClass = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                    const tr = document.createElement('tr');
+                    tr.className = bgClass;
+                    tr.innerHTML = `
+                        <td class="border border-gray-200 py-1.5 md:py-2 px-2 md:px-4">
+                            <textarea rows="1" oninput="updateItem(${item.id}, 'name', this)" class="w-full font-medium text-gray-800 text-xs md:text-sm bg-transparent" placeholder="Description...">${item.name}</textarea>
+                        </td>
+                        <td class="border border-gray-200 py-1.5 md:py-2 px-1 md:px-4">
+                            <input type="number" oninput="updateItem(${item.id}, 'qty', this)" value="${item.qty}" class="w-full text-center font-semibold text-gray-800 text-xs md:text-sm bg-transparent">
+                        </td>
+                        <td class="border border-gray-200 py-1.5 md:py-2 px-1 md:px-4">
+                            <input type="number" oninput="updateItem(${item.id}, 'price', this)" value="${item.price}" class="w-full text-center font-semibold text-gray-800 text-xs md:text-sm bg-transparent">
+                        </td>
+                        <td class="border border-gray-200 py-1.5 md:py-2 px-2 md:px-4 text-right font-bold text-gray-900 bg-gray-100/50 item-total text-xs md:text-sm whitespace-nowrap">
+                            ${(item.qty * item.price).toLocaleString('fr-FR')}
+                        </td>
+                        <td class="no-print text-center px-1 md:px-2 border-b border-gray-200">
+                            <button onclick="removeInvoiceItem(${item.id})" class="text-red-500 hover:text-red-700 p-1"><i class="fas fa-trash"></i></button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                    
+                    const textarea = tr.querySelector('textarea');
+                    setTimeout(() => { textarea.style.height = textarea.scrollHeight + 'px'; }, 10);
+                });
+            }
+            calculateTotals();
+        }
+
+        function calculateTotals() {
+            const subTotal = invoiceItems.reduce((sum, item) => sum + (item.qty * item.price), 0);
+            const tvaRate = parseFloat(document.getElementById('tvaInput').value) || 0;
+            const versement = parseFloat(document.getElementById('versementInput').value) || 0;
+
+            const tvaAmount = subTotal * (tvaRate / 100);
+            const totalTTC = subTotal + tvaAmount;
+            currentTotalTTC = totalTTC; // تحديث المتغير العام للحفظ
+            const reste = totalTTC - versement;
+
+            document.getElementById('valSousTotal').innerText = subTotal.toLocaleString('fr-FR') + ' DA';
+            document.getElementById('valTva').innerText = tvaAmount.toLocaleString('fr-FR') + ' DA';
+            document.getElementById('valTotalTtc').innerText = totalTTC.toLocaleString('fr-FR') + ' DA';
+            document.getElementById('valReste').innerText = reste.toLocaleString('fr-FR') + ' DA';
+            document.getElementById('lblTvaRate').innerText = tvaRate + '%';
+
+            document.getElementById('rowTva').style.display = tvaRate > 0 ? 'table-row' : 'none';
+            document.getElementById('rowReste').style.display = versement > 0 ? 'table-row' : 'none';
+        }
+
+        // --- دوال الحفظ والسجل (الجديدة) ---
+
+        function autoIncrementInvoiceNum() {
+            const year = new Date().getFullYear();
+            const count = savedInvoices.length + 1;
+            document.getElementById('invoiceNum').value = `${year}/${String(count).padStart(3, '0')}`;
+        }
+
+        function resetInvoiceForm() {
+            if(confirm('هل تريد مسح البيانات الحالية وبدء فاتورة جديدة؟')) {
+                invoiceItems = [];
+                document.getElementById('clientName').value = '';
+                document.getElementById('versementInput').value = '0';
+                document.getElementById('invoiceDate').value = new Date().toLocaleDateString('fr-FR');
+                autoIncrementInvoiceNum();
+                renderInvoiceTable();
+            }
+        }
+
+        function saveCurrentInvoice() {
+            const clientName = document.getElementById('clientName').value.trim();
+            const invoiceNum = document.getElementById('invoiceNum').value;
+            const date = document.getElementById('invoiceDate').value;
+
+            if(!clientName) {
+                alert('يرجى كتابة اسم العميل قبل الحفظ.');
+                return;
+            }
+            if(invoiceItems.length === 0) {
+                alert('الفاتورة فارغة. أضف سلعاً قبل الحفظ.');
+                return;
+            }
+
+            const newInvoice = {
+                id: Date.now(), // Unique ID للرجوع إليها
+                num: invoiceNum,
+                date: date,
+                client: clientName,
+                total: currentTotalTTC,
+                status: 'unpaid', // افتراضياً الفاتورة معلقة
+                itemsSnapshot: [...invoiceItems] // نسخة من السلع إذا أردنا استعراضها لاحقاً
+            };
+
+            // التحقق من عدم حفظ نفس رقم الفاتورة مرتين (تحديث بدلاً من إضافة)
+            const existingIndex = savedInvoices.findIndex(inv => inv.num === invoiceNum);
+            if(existingIndex !== -1) {
+                if(confirm('هذه الفاتورة موجودة مسبقاً في السجل. هل تريد تحديثها بالبيانات الحالية؟')) {
+                    newInvoice.status = savedInvoices[existingIndex].status; // الاحتفاظ بحالتها السابقة
+                    savedInvoices[existingIndex] = newInvoice;
+                } else {
+                    return; // إلغاء الحفظ
+                }
+            } else {
+                savedInvoices.push(newInvoice);
+            }
+
+            localStorage.setItem('dafis_history', JSON.stringify(savedInvoices));
+            alert('تم حفظ الفاتورة بنجاح في السجل!');
+            renderHistoryTable(); // تحديث الجدول في الخلفية
+        }
+
+        function toggleHistory(show) {
+            const modal = document.getElementById('historyModal');
+            if(show) {
+                renderHistoryTable();
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function renderHistoryTable() {
+            const tbody = document.getElementById('historyTableBody');
+            tbody.innerHTML = '';
+            
+            let totalRevenue = 0;
+
+            if(savedInvoices.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-gray-500">لا توجد فواتير محفوظة في السجل.</td></tr>`;
+            } else {
+                // عرض من الأحدث للأقدم
+                const reversedList = [...savedInvoices].reverse();
+                
+                reversedList.forEach(inv => {
+                    if(inv.status === 'paid') totalRevenue += inv.total;
+
+                    const tr = document.createElement('tr');
+                    tr.className = 'border-b border-gray-100 hover:bg-gray-50';
+                    tr.innerHTML = `
+                        <td class="py-3 px-3 font-bold text-gray-800">${inv.num}</td>
+                        <td class="py-3 px-3 text-gray-600">${inv.date}</td>
+                        <td class="py-3 px-3 font-medium text-gray-800">${inv.client}</td>
+                        <td class="py-3 px-3 font-bold text-right text-red-600">${inv.total.toLocaleString('fr-FR')} DA</td>
+                        <td class="py-3 px-3 text-center">
+                            <select onchange="updateInvoiceStatus(${inv.id}, this.value)" class="outline-none border-none bg-transparent cursor-pointer ${inv.status === 'paid' ? 'status-paid' : 'status-unpaid'}">
+                                <option value="unpaid" ${inv.status === 'unpaid' ? 'selected' : ''}>Non Payée</option>
+                                <option value="paid" ${inv.status === 'paid' ? 'selected' : ''}>Payée</option>
+                            </select>
+                        </td>
+                        <td class="py-3 px-3 text-center">
+                            <button onclick="deleteInvoiceFromHistory(${inv.id})" class="text-red-500 hover:text-red-700 bg-red-50 p-2 rounded transition-colors" title="حذف من السجل">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            // تحديث الإحصائيات
+            document.getElementById('statTotalInvoices').innerText = savedInvoices.length;
+            document.getElementById('statTotalRevenue').innerText = totalRevenue.toLocaleString('fr-FR') + ' DA';
+        }
+
+        function updateInvoiceStatus(id, newStatus) {
+            const invoice = savedInvoices.find(inv => inv.id === id);
+            if(invoice) {
+                invoice.status = newStatus;
+                localStorage.setItem('dafis_history', JSON.stringify(savedInvoices));
+                renderHistoryTable(); // تحديث الألوان والمجموع فوراً
+            }
+        }
+
+        function deleteInvoiceFromHistory(id) {
+            if(confirm('هل أنت متأكد من حذف هذه الفاتورة من السجل نهائياً؟')) {
+                savedInvoices = savedInvoices.filter(inv => inv.id !== id);
+                localStorage.setItem('dafis_history', JSON.stringify(savedInvoices));
+                renderHistoryTable();
+                
+                // تحديث رقم الفاتورة الحالية إذا كنا نحذف أحدث فاتورة
+                autoIncrementInvoiceNum();
+            }
+        }
+
+        // --- وظائف الكتالوج (السابقة) ---
+
+        function toggleCatalog(show) {
+            const modal = document.getElementById('catalogModal');
+            if(show) {
+                modal.classList.remove('hidden');
+                cancelEdit();
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function saveCatalog() {
+            localStorage.setItem('dafis_catalog', JSON.stringify(catalogItems));
+        }
+
+        function sortCatalog(column) {
+            if (currentSort.column === column) {
+                currentSort.asc = !currentSort.asc;
+            } else {
+                currentSort.column = column;
+                currentSort.asc = true;
+            }
+
+            catalogItems.sort((a, b) => {
+                let valA = a[column];
+                let valB = b[column];
+                
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+
+                if (valA < valB) return currentSort.asc ? -1 : 1;
+                if (valA > valB) return currentSort.asc ? 1 : -1;
+                return 0;
+            });
+
+            const iconName = document.getElementById('sortIconName');
+            const iconPrice = document.getElementById('sortIconPrice');
+            
+            iconName.className = column === 'name' ? (currentSort.asc ? 'fas fa-sort-up ml-1 text-blue-600' : 'fas fa-sort-down ml-1 text-blue-600') : 'fas fa-sort ml-1 text-gray-400';
+            iconPrice.className = column === 'price' ? (currentSort.asc ? 'fas fa-sort-up ml-1 text-blue-600' : 'fas fa-sort-down ml-1 text-blue-600') : 'fas fa-sort ml-1 text-gray-400';
+
+            renderCatalog();
+        }
+
+        function renderCatalog() {
+            const tbody = document.getElementById('catalogTableBody');
+            tbody.innerHTML = '';
+            
+            if(catalogItems.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" class="text-center py-4 text-gray-500 text-sm">القاعدة فارغة حالياً.</td></tr>`;
+            } else {
+                catalogItems.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'border-b border-gray-100 hover:bg-gray-50 transition-colors';
+                    tr.innerHTML = `
+                        <td class="py-2 px-3 md:px-4 font-medium text-gray-800 whitespace-nowrap md:whitespace-normal">${item.name}</td>
+                        <td class="py-2 px-3 md:px-4 font-bold text-gray-600 whitespace-nowrap">${item.price.toLocaleString('fr-FR')}</td>
+                        <td class="py-2 px-2 md:px-4 text-center flex justify-center gap-1">
+                            <button onclick="insertFromCatalog(${item.id})" class="text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 p-1.5 md:p-2 rounded-md transition-colors" title="إدراج في الفاتورة">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                            <button onclick="editCatalogItem(${item.id})" class="text-blue-500 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 p-1.5 md:p-2 rounded-md transition-colors" title="تعديل السلعة">
+                                <i class="fas fa-pen"></i>
+                            </button>
+                            <button onclick="deleteFromCatalog(${item.id})" class="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 p-1.5 md:p-2 rounded-md transition-colors" title="حذف من القاعدة">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        }
+
+        function editCatalogItem(id) {
+            const item = catalogItems.find(i => i.id === id);
+            if(item) {
+                document.getElementById('newCatName').value = item.name;
+                document.getElementById('newCatPrice').value = item.price;
+                editingCatId = id;
+                
+                document.getElementById('formTitle').innerText = 'تعديل السلعة الحالية:';
+                const btnSave = document.getElementById('btnSaveCatalog');
+                btnSave.innerText = 'تحديث';
+                btnSave.classList.replace('bg-blue-600', 'bg-emerald-600');
+                btnSave.classList.replace('hover:bg-blue-700', 'hover:bg-emerald-700');
+                
+                document.getElementById('btnCancelEdit').classList.remove('hidden');
+                document.getElementById('newCatName').focus();
+            }
+        }
+
+        function cancelEdit() {
+            editingCatId = null;
+            document.getElementById('newCatName').value = '';
+            document.getElementById('newCatPrice').value = '';
+            
+            document.getElementById('formTitle').innerText = 'إضافة سلعة:';
+            const btnSave = document.getElementById('btnSaveCatalog');
+            btnSave.innerText = 'حفظ';
+            btnSave.classList.replace('bg-emerald-600', 'bg-blue-600');
+            btnSave.classList.replace('hover:bg-emerald-700', 'hover:bg-blue-700');
+            
+            document.getElementById('btnCancelEdit').classList.add('hidden');
+        }
+
+        function saveOrUpdateCatalog() {
+            const nameInput = document.getElementById('newCatName');
+            const priceInput = document.getElementById('newCatPrice');
+            const name = nameInput.value.trim();
+            const price = parseFloat(priceInput.value) || 0;
+
+            if(!name) return;
+
+            if (editingCatId) {
+                const item = catalogItems.find(i => i.id === editingCatId);
+                if(item) {
+                    item.name = name;
+                    item.price = price;
+                }
+                cancelEdit();
+            } else {
+                catalogItems.push({ id: Date.now(), name, price });
+                nameInput.value = '';
+                priceInput.value = '';
+            }
+
+            if (currentSort.column) {
+                sortCatalog(currentSort.column); 
+            } else {
+                saveCatalog();
+                renderCatalog();
+            }
+        }
+
+        function deleteFromCatalog(id) {
+            if(confirm('هل أنت متأكد من حذف هذه السلعة من القاعدة؟')) {
+                catalogItems = catalogItems.filter(item => item.id !== id);
+                saveCatalog();
+                renderCatalog();
+                if(editingCatId === id) cancelEdit();
+            }
+        }
+
+        function insertFromCatalog(id) {
+            const item = catalogItems.find(i => i.id === id);
+            if(item) {
+                addInvoiceItem(item.name, 1, item.price);
+            }
+        }
+
+        function downloadPDF() {
+            const element = document.getElementById('invoice-container');
+            const originalWidth = element.style.width;
+            const originalMaxWidth = element.style.maxWidth;
+            
+            element.style.width = '210mm';
+            element.style.maxWidth = '210mm';
+            
+            const num = document.getElementById('invoiceNum').value.replace(/\//g, '-');
+            const clientName = document.getElementById('clientName').value.trim() || 'Client';
+            
+            const opt = {
+                margin: 0,
+                filename: `Facture_DAFIS_${num}_${clientName}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, windowWidth: 1024 },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            html2pdf().set(opt).from(element).save().then(() => {
+                element.style.width = originalWidth;
+                element.style.maxWidth = originalMaxWidth;
+            });
+        }
+    </script>
+</body>
+</html>
                             <button id="btnCancelEdit" onclick="cancelEdit()" class="hidden bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-2 rounded-md font-medium text-sm transition-colors whitespace-nowrap">
                                 إلغاء
                             </button>
